@@ -1,15 +1,15 @@
 
-import { useMemo, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import {
   Activity, Flame, Thermometer, ShieldCheck,
-  Wifi, SlidersHorizontal, Power, AlertTriangle,
-  Clock3, Cpu
+  Wifi, WifiOff, SlidersHorizontal, Power,
+  AlertTriangle, Clock3, Cpu
 } from 'lucide-react'
+import { useTelemetry } from './hooks/useTelemetry'
 import './App.css'
 
 const DEMO_SETPOINT = 65
-
-const initialHistory = [
+const INITIAL_DEMO_HISTORY = [
   26, 28, 30, 33, 37, 41, 46, 51,
   55, 59, 62, 64, 65, 64, 65, 66
 ]
@@ -18,12 +18,12 @@ function OvenAnimation({
   temperature,
   heaterOn,
 }: {
-  temperature: number
-  heaterOn: boolean
+  temperature: number | null
+  heaterOn: boolean | null
 }) {
-  const intensity = Math.max(
-    0, Math.min(1, (temperature - 25) / 55)
-  )
+  const intensity = temperature === null
+    ? 0
+    : Math.max(0, Math.min(1, (temperature - 25) / 55))
 
   return (
     <div className="oven-scene">
@@ -42,7 +42,7 @@ function OvenAnimation({
           <div
             className="oven-chamber"
             style={{
-              backgroundColor: `rgba(234, 88, 12, ${
+              backgroundColor: `rgba(234,88,12,${
                 0.06 + intensity * 0.48
               })`,
               boxShadow: `inset 0 0 ${
@@ -53,17 +53,19 @@ function OvenAnimation({
             <div className="chamber-grid" />
 
             <div className="oven-temperature">
-              <span>{temperature.toFixed(1)}°</span>
+              <span>
+                {temperature === null
+                  ? '--'
+                  : `${temperature.toFixed(1)}°`}
+              </span>
               <small>TEMPERATURA INTERNA</small>
             </div>
 
-            <div
-              className={
-                heaterOn
-                  ? 'heating-element active'
-                  : 'heating-element'
-              }
-            >
+            <div className={
+              heaterOn === true
+                ? 'heating-element active'
+                : 'heating-element'
+            }>
               <svg viewBox="0 0 240 44">
                 <path
                   d="M5 25 Q24 3 43 25 T81 25 T119 25
@@ -82,6 +84,7 @@ function OvenAnimation({
           <span>THERMAL CHAMBER / V1.0</span>
           <span>ESP32</span>
         </div>
+
         <div className="oven-feet">
           <span /><span />
         </div>
@@ -95,8 +98,16 @@ function TemperatureChart({
   setpoint,
 }: {
   values: number[]
-  setpoint: number
+  setpoint: number | null
 }) {
+  if (values.length === 0) {
+    return (
+      <div className="chart-empty">
+        Esperando mediciones de temperatura...
+      </div>
+    )
+  }
+
   const width = 700
   const height = 230
   const left = 38
@@ -106,12 +117,16 @@ function TemperatureChart({
   const plotW = width - left - right
   const plotH = height - top - bottom
 
+  const allValues = setpoint === null
+    ? values
+    : [...values, setpoint]
+
   const low = Math.floor(
-    (Math.min(...values, setpoint) - 5) / 10
+    (Math.min(...allValues) - 5) / 10
   ) * 10
 
   const high = Math.ceil(
-    (Math.max(...values, setpoint) + 5) / 10
+    (Math.max(...allValues) + 5) / 10
   ) * 10
 
   const y = (value: number) =>
@@ -121,14 +136,14 @@ function TemperatureChart({
     left + index / Math.max(1, values.length - 1) * plotW
 
   const path = values
-    .map((value, i) =>
-      `${i === 0 ? 'M' : 'L'} ${x(i)} ${y(value)}`
+    .map((value, index) =>
+      `${index === 0 ? 'M' : 'L'} ${x(index)} ${y(value)}`
     )
     .join(' ')
 
   const ticks = Array.from(
     { length: 5 },
-    (_, i) => low + (high - low) * i / 4
+    (_, index) => low + (high - low) * index / 4
   )
 
   return (
@@ -136,18 +151,21 @@ function TemperatureChart({
       className="temperature-chart"
       viewBox={`0 0 ${width} ${height}`}
       role="img"
-      aria-label="Gráfica simulada de temperatura y setpoint"
+      aria-label="Tendencia de temperatura"
     >
       {ticks.map(tick => (
         <g key={tick}>
           <line
-            x1={left} y1={y(tick)}
-            x2={width - right} y2={y(tick)}
+            x1={left}
+            y1={y(tick)}
+            x2={width - right}
+            y2={y(tick)}
             stroke="#283348"
             strokeDasharray="4 5"
           />
           <text
-            x={left - 8} y={y(tick) + 4}
+            x={left - 8}
+            y={y(tick) + 4}
             textAnchor="end"
             fill="#8794AA"
             fontSize="11"
@@ -157,13 +175,17 @@ function TemperatureChart({
         </g>
       ))}
 
-      <line
-        x1={left} y1={y(setpoint)}
-        x2={width - right} y2={y(setpoint)}
-        stroke="#60A5FA"
-        strokeWidth="2"
-        strokeDasharray="7 5"
-      />
+      {setpoint !== null && (
+        <line
+          x1={left}
+          y1={y(setpoint)}
+          x2={width - right}
+          y2={y(setpoint)}
+          stroke="#60A5FA"
+          strokeWidth="2"
+          strokeDasharray="7 5"
+        />
+      )}
 
       <path
         d={path}
@@ -179,7 +201,7 @@ function TemperatureChart({
         cy={y(values[values.length - 1])}
         r="5"
         fill="#FB923C"
-        stroke="#FFF"
+        stroke="#fff"
         strokeWidth="1.5"
       />
 
@@ -187,7 +209,8 @@ function TemperatureChart({
         Inicio de muestra
       </text>
       <text
-        x={width - right} y={height - 5}
+        x={width - right}
+        y={height - 5}
         textAnchor="end"
         fill="#8794AA"
         fontSize="11"
@@ -199,28 +222,91 @@ function TemperatureChart({
 }
 
 function App() {
-  const [temperature, setTemperature] = useState(58)
-  const [heaterOn, setHeaterOn] = useState(true)
-  const [history, setHistory] = useState(initialHistory)
+  const { status, websocketConnected } = useTelemetry()
 
-  const difference = temperature - DEMO_SETPOINT
+  const [demoMode, setDemoMode] = useState(false)
+  const [demoTemp, setDemoTemp] = useState(58)
+  const [demoHeater, setDemoHeater] = useState(true)
 
-  const stateText = useMemo(() => {
-    if (temperature > 68) return 'Sobre banda objetivo'
-    if (temperature < 62) return 'Debajo del objetivo'
-    return 'Dentro de banda objetivo'
-  }, [temperature])
+  const [realHistory, setRealHistory] = useState<number[]>([])
+  const [demoHistory, setDemoHistory] =
+    useState(INITIAL_DEMO_HISTORY)
 
-  function updateTemperature(value: number) {
-    setTemperature(value)
-    setHistory(previous => [...previous.slice(-29), value])
+  const lastTimestamp = useRef<string | null>(null)
+
+  const measurement = status.last_measurement
+  const live = websocketConnected &&
+    status.receiving &&
+    measurement?.sensor_ok === true &&
+    measurement.temperature !== null &&
+    measurement.temperature !== undefined
+
+  // Agrega solo una vez cada medición real.
+  // FastAPI publica estados cada 0.5 segundos,
+  // pero el sensor mide aproximadamente cada 1 segundo.
+  useEffect(() => {
+    if (!websocketConnected || !status.receiving) return
+    if (!measurement?.sensor_ok) return
+    if (measurement.temperature === null) return
+
+    if (measurement.timestamp === lastTimestamp.current) {
+      return
+    }
+
+    lastTimestamp.current = measurement.timestamp
+
+    const value = measurement.temperature
+
+    if (Number.isFinite(value)) {
+      setRealHistory(previous =>
+        [...previous.slice(-59), value]
+      )
+    }
+  }, [measurement, status.receiving, websocketConnected])
+
+  const temperature = demoMode
+    ? demoTemp
+    : live
+      ? measurement!.temperature
+      : null
+
+  const setpoint = demoMode
+    ? DEMO_SETPOINT
+    : measurement?.setpoint ?? null
+
+  const heaterOn = demoMode
+    ? demoHeater
+    : live
+      ? measurement?.heater_on ?? null
+      : null
+
+  const history = demoMode ? demoHistory : realHistory
+
+  const difference =
+    temperature !== null && setpoint !== null
+      ? temperature - setpoint
+      : null
+
+  function updateDemoTemperature(value: number) {
+    setDemoTemp(value)
+    setDemoHistory(previous =>
+      [...previous.slice(-59), value]
+    )
   }
+
+  const heaterText = heaterOn === null
+    ? 'Estado no disponible'
+    : heaterOn
+      ? 'Calefactor activado'
+      : 'Calefactor desactivado'
 
   return (
     <div className="app-shell">
       <aside className="sidebar">
         <div className="logo">
-          <div className="logo-icon"><Flame size={23} /></div>
+          <div className="logo-icon">
+            <Flame size={23} />
+          </div>
           <div>
             <strong>POWERGuard</strong>
             <small>THERMAL SYSTEM</small>
@@ -251,21 +337,43 @@ function App() {
       <main className="main-content">
         <header className="topbar">
           <div>
-            <div className="eyebrow">SISTEMA DE MONITOREO TÉRMICO</div>
+            <div className="eyebrow">
+              SISTEMA DE MONITOREO TÉRMICO
+            </div>
             <h1>Panel de supervisión</h1>
-            <p>Visualización del horno y su comportamiento térmico.</p>
+            <p>
+              Visualización del horno y su
+              comportamiento térmico.
+            </p>
           </div>
 
           <div className="demo-badge">
-            <Wifi size={16} />
-            MODO DEMOSTRACIÓN
+            {demoMode
+              ? <SlidersHorizontal size={16} />
+              : live
+                ? <Wifi size={16} />
+                : <WifiOff size={16} />}
+            {demoMode
+              ? 'SIMULACIÓN'
+              : live
+                ? `EN VIVO · ${status.port}`
+                : 'SIN DATOS EN VIVO'}
           </div>
         </header>
 
         <div className="notice">
           <AlertTriangle size={17} />
-          Datos simulados. El ESP32 todavía no está conectado
-          a esta interfaz.
+          {demoMode
+            ? 'Modo demostración: los datos son simulados.'
+            : !websocketConnected
+              ? 'Sin conexión con FastAPI.'
+              : !status.connected
+                ? 'ESP32 desconectado de FastAPI.'
+                : !status.receiving
+                  ? 'ESP32 conectado, pero sin datos recientes.'
+                  : !measurement?.sensor_ok
+                    ? 'Falla de lectura del termopar.'
+                    : 'Monitoreo real activo. El control térmico todavía no está integrado.'}
         </div>
 
         <section className="metric-grid">
@@ -275,22 +383,36 @@ function App() {
               <Thermometer size={19} />
             </div>
             <div className="metric-number">
-              {temperature.toFixed(1)}
+              {temperature === null
+                ? '--'
+                : temperature.toFixed(1)}
               <span>°C</span>
             </div>
-            <div className="metric-foot">Termopar tipo K · Simulación</div>
+            <div className="metric-foot">
+              {demoMode
+                ? 'Temperatura simulada'
+                : live
+                  ? 'MAX6675 · Medición real'
+                  : 'Esperando medición válida'}
+            </div>
           </article>
 
           <article className="metric-card">
             <div className="metric-heading">
-              <span>SETPOINT DE REFERENCIA</span>
+              <span>SETPOINT</span>
               <SlidersHorizontal size={19} />
             </div>
             <div className="metric-number">
-              {DEMO_SETPOINT.toFixed(1)}
+              {setpoint === null
+                ? '--'
+                : setpoint.toFixed(1)}
               <span>°C</span>
             </div>
-            <div className="metric-foot">Valor provisional de diseño</div>
+            <div className="metric-foot">
+              {demoMode
+                ? 'Referencia provisional de simulación'
+                : 'Pendiente del firmware de control'}
+            </div>
           </article>
 
           <article className="metric-card">
@@ -299,11 +421,16 @@ function App() {
               <Activity size={19} />
             </div>
             <div className="metric-number">
-              {difference > 0 ? '+' : ''}
-              {difference.toFixed(1)}
+              {difference === null
+                ? '--'
+                : `${difference > 0 ? '+' : ''}${difference.toFixed(1)}`}
               <span>°C</span>
             </div>
-            <div className="metric-foot">{stateText}</div>
+            <div className="metric-foot">
+              {difference === null
+                ? 'Se requiere setpoint'
+                : 'Temperatura menos setpoint'}
+            </div>
           </article>
         </section>
 
@@ -323,12 +450,18 @@ function App() {
             />
 
             <div className="oven-status">
-              <span className={heaterOn ? 'status-dot on' : 'status-dot'} />
+              <span className={
+                heaterOn === true
+                  ? 'status-dot on'
+                  : 'status-dot'
+              } />
               <div>
-                <strong>
-                  Calefactor {heaterOn ? 'activado' : 'desactivado'}
-                </strong>
-                <small>Estado simulado de la salida GPIO18</small>
+                <strong>{heaterText}</strong>
+                <small>
+                  {demoMode
+                    ? 'Estado simulado'
+                    : 'El ESP32 todavía no reporta la salida GPIO18'}
+                </small>
               </div>
             </div>
           </article>
@@ -337,63 +470,94 @@ function App() {
             <div className="panel-header">
               <div>
                 <h2>Estado del sistema</h2>
-                <p>Variables y operación</p>
+                <p>Variables de comunicación</p>
               </div>
               <ShieldCheck size={20} className="header-icon" />
             </div>
 
             <div className="status-row">
-              <span>Comunicación serial</span>
-              <strong className="neutral">No conectada</strong>
+              <span>FastAPI</span>
+              <strong>
+                {websocketConnected ? 'Conectado' : 'Desconectado'}
+              </strong>
             </div>
+
+            <div className="status-row">
+              <span>ESP32</span>
+              <strong>
+                {status.receiving
+                  ? `Recibiendo · ${status.port}`
+                  : status.connected
+                    ? 'Esperando datos'
+                    : 'Desconectado'}
+              </strong>
+            </div>
+
+            <div className="status-row">
+              <span>MAX6675</span>
+              <strong>
+                {live ? 'Lectura válida' : 'Sin lectura válida reciente'}
+              </strong>
+            </div>
+
             <div className="status-row">
               <span>Modo</span>
-              <strong>Demostración</strong>
-            </div>
-            <div className="status-row">
-              <span>Sensor</span>
-              <strong>MAX6675 (simulado)</strong>
-            </div>
-            <div className="status-row">
-              <span>Banda objetivo provisional</span>
-              <strong>62–68 °C</strong>
+              <strong>
+                {demoMode
+                  ? 'Demostración'
+                  : measurement?.mode ?? 'Monitoreo'}
+              </strong>
             </div>
 
             <div className="simulator">
               <div className="sim-title">
                 <SlidersHorizontal size={17} />
-                Simulador visual
+                Modo de visualización
               </div>
-              <p>
-                Ajusta la temperatura para observar
-                cómo cambia la cámara térmica.
-              </p>
-
-              <div className="range-label">
-                <span>Temperatura simulada</span>
-                <strong>{temperature} °C</strong>
-              </div>
-
-              <input
-                type="range"
-                min="20"
-                max="100"
-                value={temperature}
-                onChange={event =>
-                  updateTemperature(Number(event.target.value))
-                }
-              />
 
               <button
                 type="button"
                 className="heater-button"
-                onClick={() => setHeaterOn(!heaterOn)}
+                onClick={() => setDemoMode(!demoMode)}
               >
-                <Power size={17} />
-                {heaterOn
-                  ? 'Simular apagado del calefactor'
-                  : 'Simular encendido del calefactor'}
+                {demoMode
+                  ? 'Volver a datos reales'
+                  : 'Activar simulación'}
               </button>
+
+              {demoMode && (
+                <>
+                  <p>
+                    Estos controles no afectan al ESP32 ni a la PCB.
+                  </p>
+
+                  <div className="range-label">
+                    <span>Temperatura simulada</span>
+                    <strong>{demoTemp} °C</strong>
+                  </div>
+
+                  <input
+                    type="range"
+                    min="20"
+                    max="100"
+                    value={demoTemp}
+                    onChange={event =>
+                      updateDemoTemperature(
+                        Number(event.target.value)
+                      )}
+                  />
+
+                  <button
+                    type="button"
+                    className="heater-button"
+                    onClick={() => setDemoHeater(!demoHeater)}
+                  >
+                    <Power size={17} />
+                    Simular calefactor:
+                    {demoHeater ? ' ON' : ' OFF'}
+                  </button>
+                </>
+              )}
             </div>
           </article>
         </section>
@@ -402,25 +566,41 @@ function App() {
           <div className="panel-header">
             <div>
               <h2>Tendencia de temperatura</h2>
-              <p>Datos de ejemplo y cambios del simulador</p>
+              <p>
+                {demoMode
+                  ? 'Historial de demostración'
+                  : 'Últimas 60 mediciones válidas de esta sesión'}
+              </p>
             </div>
-            <span className="small-label">SIMULACIÓN</span>
+            <span className="small-label">
+              {demoMode ? 'SIMULACIÓN' : 'DATOS RECIBIDOS'}
+            </span>
           </div>
 
           <div className="chart-legend">
-            <span><i className="orange-line" /> Temperatura</span>
-            <span><i className="blue-line" /> Setpoint</span>
+            <span>
+              <i className="orange-line" /> Temperatura
+            </span>
+            {setpoint !== null && (
+              <span>
+                <i className="blue-line" /> Setpoint
+              </span>
+            )}
           </div>
 
           <TemperatureChart
             values={history}
-            setpoint={DEMO_SETPOINT}
+            setpoint={setpoint}
           />
         </section>
 
         <footer className="footer">
           POWERGuard © 2026 · Proyecto PBL
-          <span>Interfaz de demostración · Sin control físico</span>
+          <span>
+            {demoMode
+              ? 'Datos simulados'
+              : 'Supervisión de temperatura · Sin control remoto'}
+          </span>
         </footer>
       </main>
     </div>
