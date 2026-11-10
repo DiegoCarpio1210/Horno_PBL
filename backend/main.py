@@ -13,6 +13,20 @@ from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
+import csv
+import io
+import sqlite3
+
+from fastapi import Query
+from fastapi.responses import StreamingResponse
+
+from database import (
+    init_database,
+    save_measurement,
+    get_measurements
+)
+
+
 
 # ==========================================
 # POWERGuard - Backend v1
@@ -115,6 +129,14 @@ def serial_reader(ser, stop):
                 last_measurement = measurement
                 last_received = time.monotonic()
 
+            try:
+                save_measurement(measurement)
+            except sqlite3.Error as exc:
+                print(
+                    f"POWERGuard: error guardando medición: {exc}"
+                )
+
+
     except (serial.SerialException, OSError) as exc:
         with lock:
             last_error = str(exc)
@@ -154,10 +176,16 @@ def disconnect_serial():
         reader_thread.join(timeout=2)
 
 
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    yield
-    disconnect_serial()
+    init_database()
+
+    try:
+        yield
+    finally:
+        disconnect_serial()
+
 
 
 app = FastAPI(
@@ -298,3 +326,73 @@ async def telemetry(websocket: WebSocket):
 
     except (WebSocketDisconnect, RuntimeError):
         pass
+
+
+# ==========================================
+# HISTORIAL DE MEDICIONES
+# ==========================================
+
+@app.get("/api/history")
+def history(
+    limit: int = Query(default=300, ge=1, le=10000),
+    start: str | None = None,
+    end: str | None = None
+):
+    records = get_measurements(
+        limit=limit,
+        start=start,
+        end=end
+    )
+
+    return {
+        "count": len(records),
+        "measurements": records
+    }
+
+
+# ==========================================
+# EXPORTACIÓN CSV
+# ==========================================
+
+@app.get("/api/export")
+def export_csv(
+    limit: int = Query(default=10000, ge=1, le=100000),
+    start: str | None = None,
+    end: str | None = None
+):
+    records = get_measurements(
+        limit=limit,
+        start=start,
+        end=end
+    )
+
+    output = io.StringIO()
+
+    columns = [
+        "timestamp",
+        "temperature",
+        "sensor_ok",
+        "setpoint",
+        "heater_on",
+        "mode"
+    ]
+
+    writer = csv.DictWriter(
+        output,
+        fieldnames=columns,
+        extrasaction="ignore"
+    )
+
+    writer.writeheader()
+    writer.writerows(records)
+
+    content = output.getvalue().encode("utf-8-sig")
+
+    return StreamingResponse(
+        iter([content]),
+        media_type="text/csv; charset=utf-8",
+        headers={
+            "Content-Disposition":
+                'attachment; filename="powerguard_mediciones.csv"'
+        }
+    )
