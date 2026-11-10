@@ -1,4 +1,4 @@
-
+import HistoryPage from './pages/HistoryPage'
 import { useEffect, useRef, useState } from 'react'
 import {
   Activity, Flame, Thermometer, ShieldCheck,
@@ -223,6 +223,9 @@ function TemperatureChart({
 
 function App() {
   const { status, websocketConnected } = useTelemetry()
+  const [currentPage, setCurrentPage] = useState<
+  'supervision' | 'history'
+>('supervision')
 
   const [demoMode, setDemoMode] = useState(false)
   const [demoTemp, setDemoTemp] = useState(58)
@@ -315,15 +318,33 @@ function App() {
 
         <div className="sidebar-label">PLATAFORMA</div>
 
-        <div className="nav-link selected">
-          <Activity size={18} />
-          Supervisión
-        </div>
+        
+<button
+  type="button"
+  className={
+    currentPage === 'supervision'
+      ? 'nav-link selected'
+      : 'nav-link'
+  }
+  onClick={() => setCurrentPage('supervision')}
+>
+  <Activity size={18} />
+  Supervisión
+</button>
 
-        <div className="nav-link muted">
-          <Clock3 size={18} />
-          Historial (próximamente)
-        </div>
+<button
+  type="button"
+  className={
+    currentPage === 'history'
+      ? 'nav-link selected'
+      : 'nav-link'
+  }
+  onClick={() => setCurrentPage('history')}
+>
+  <Clock3 size={18} />
+  Historial y análisis
+</button>
+
 
         <div className="sidebar-bottom">
           <Cpu size={18} />
@@ -334,7 +355,12 @@ function App() {
         </div>
       </aside>
 
-      <main className="main-content">
+      <main className="main-content"> 
+        
+        {currentPage === 'history' ? (
+    <HistoryPage />
+  ) : (
+    <>
         <header className="topbar">
           <div>
             <div className="eyebrow">
@@ -594,6 +620,7 @@ function App() {
           />
         </section>
 
+        
         <footer className="footer">
           POWERGuard © 2026 · Proyecto PBL
           <span>
@@ -602,6 +629,10 @@ function App() {
               : 'Supervisión de temperatura · Sin control remoto'}
           </span>
         </footer>
+
+        </>
+        )}
+
       </main>
     </div>
   )
