@@ -70,7 +70,7 @@ function OvenAnimation({
 
         <div className="oven-top">
           <span className="machine-brand">
-            POWERGUARD
+            HORNO 4.0
           </span>
 
           <div className="machine-light" />
@@ -597,7 +597,7 @@ function App() {
           </div>
 
           <div>
-            <strong>POWERGuard</strong>
+            <strong>Horno 4.0</strong>
             <small>THERMAL SYSTEM</small>
           </div>
 

@@ -268,11 +268,3 @@ def get_measurements(
             "heater_on",
             "command_on",
             "alarm",
-            "bench_interlock",
-        ):
-            if item[flag] is not None:
-                item[flag] = bool(item[flag])
-
-        result.append(item)
-
-    return result
